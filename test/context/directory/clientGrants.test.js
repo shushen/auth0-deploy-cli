@@ -1,10 +1,21 @@
 import { constants } from 'auth0-source-control-extension-tools';
 
-import handler from '../../../src/context/directory/handlers/clientGrants';
-import { standardTests } from '../../utils';
+import dirHandler from '../../../src/context/directory/handlers/clientGrants';
+import yamlHandler from '../../../src/context/yaml/handlers/clientGrants';
+import { getStandardTests } from '../../utils';
 
 const testSpec = {
-  handler: handler,
+  formats: [
+    {
+      name: 'directory',
+      handler: dirHandler,
+      subDir: constants.CLIENTS_DIRECTORY
+    },
+    {
+      name: 'yaml',
+      handler: yamlHandler
+    }
+  ],
   handlerType: 'clientGrants',
   handlerDir: constants.CLIENTS_GRANTS_DIRECTORY,
   env: { AUTH0_KEYWORD_REPLACE_MAPPINGS: { var: 'something' } },
@@ -53,9 +64,11 @@ const testSpec = {
 
 
 describe('#directory context clientGrants', () => {
-  Object.keys(standardTests).forEach((test) => {
-    it(test, async () => {
-      await standardTests[test](testSpec);
+  testSpec.formats.forEach((format) => {
+    getStandardTests(format).forEach((test) => {
+      it(test.name, async () => {
+        await test.func(test.format, testSpec);
+      });
     });
   });
 });
