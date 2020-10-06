@@ -6,19 +6,19 @@ import { getStandardTests } from '../../utils';
 
 
 const testSpec = {
+  handlerType: 'clients',
+  subDir: constants.CLIENTS_DIRECTORY,
+  env: { AUTH0_KEYWORD_REPLACE_MAPPINGS: { appType: 'spa' } },
   formats: [
     {
       name: 'directory',
-      handler: dirHandler,
-      subDir: constants.CLIENTS_DIRECTORY
+      handler: dirHandler
     },
     {
       name: 'yaml',
       handler: yamlHandler
     }
   ],
-  handlerType: 'clients',
-  env: { AUTH0_KEYWORD_REPLACE_MAPPINGS: { appType: 'spa' } },
   import: {
     directory: {
       files: {
@@ -29,8 +29,7 @@ const testSpec = {
       }
     },
     yaml: {
-      files: {
-        'clients.yaml': `
+      content: `
       clients:
         -
           name: "someClient"
@@ -42,7 +41,9 @@ const testSpec = {
           name: "customLoginClient"
           app_type: "##appType##"
           custom_login_page: "./customLoginClient_custom_login_page.html"
-      `
+      `,
+      files: {
+        'customLoginClient_custom_login_page.html': 'html code'
       }
     },
     expected: [
@@ -114,7 +115,7 @@ const testSpec = {
   }
 };
 
-describe.only('#resource clients', () => {
+describe('#resource clients', () => {
   testSpec.formats.forEach((format) => {
     getStandardTests(format).forEach((test) => {
       it(test.name, async () => {

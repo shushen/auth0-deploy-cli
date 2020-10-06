@@ -126,40 +126,53 @@ function createContext(format, config) {
   } else if (format.name === 'yaml') {
     return new yamlContext(config, mockMgmtClient());
   }
-  throw Error('unsupported format');
+  throw new Error('unsupported format');
 }
 
-async function caseValidateImport(format, spec) {
+function getInputConfig(format, repoDir, content) {
+  if (format.name === 'directory') {
+    return { AUTH0_INPUT_FILE: repoDir };
+  }
+  const inputFile = path.join(repoDir, 'main.' + format.name);
+  if (content) {
+    fs.writeFileSync(inputFile, content);
+  }
+  return { AUTH0_INPUT_FILE: inputFile };
+}
+
+async function caseValidateImport(format, testSpec) {
+  const spec = _.cloneDeep(testSpec);
   const importSpec = spec.import[format.name];
-  const files = { [format.subDir ? format.subDir : '.']: importSpec.files };
+  const files = { [spec.subDir]: importSpec.files };
   const repoDir = fs.mkdtempSync(path.join(testDataDir, format.name + '-'));
   createDir(repoDir, files);
 
-  const config = { AUTH0_INPUT_FILE: repoDir, ...spec.env };
+  const config = { ...getInputConfig(format, repoDir, importSpec.content), ...spec.env };
   const context = createContext(format, config);
   await context.load();
   rmdirSync(repoDir);
 
-  expect(context.assets[spec.handlerType]).to.deep.equal(spec.import.expected);
+  expect(_.orderBy(context.assets[spec.handlerType], [ 'name' ])).to.deep.equal(_.orderBy(spec.import.expected, [ 'name' ]));
 }
 
-async function caseValidateImportIgnoreUnknown(format, spec) {
+async function caseValidateImportIgnoreUnknown(format, testSpec) {
+  const spec = _.cloneDeep(testSpec);
   const extraFileContents = {
     'README.md': 'something'
   };
-  const updatedSpec = _.cloneDeep(spec);
-  updatedSpec.import[format.name].files = {
-    ...updatedSpec.import[format.name].files,
+  spec.import[format.name].files = {
+    ...spec.import[format.name].files,
     ...extraFileContents
   };
 
-  await caseValidateImport(format, updatedSpec);
+  await caseValidateImport(format, spec);
 }
 
-async function caseValidateImportIgnoreNonDirectoryInput(format, spec) {
-  const repoDir = fs.mkdtempSync(path.join(testDataDir, format + '-'));
+async function caseValidateImportIgnoreNonDirectoryInput(format, testSpec) {
+  const spec = _.cloneDeep(testSpec);
+  const repoDir = fs.mkdtempSync(path.join(testDataDir, format.name + '-'));
   cleanThenMkdir(repoDir);
-  const dir = path.join(repoDir, format.subDir);
+  const dir = path.join(repoDir, spec.subDir);
   fs.writeFileSync(dir, 'junk');
 
   const config = { AUTH0_INPUT_FILE: repoDir, ...spec.env };
@@ -172,13 +185,19 @@ async function caseValidateImportIgnoreNonDirectoryInput(format, spec) {
   rmdirSync(repoDir);
 }
 
-async function caseValidateExport(format, spec) {
-  const dir = fs.mkdtempSync(path.join(testDataDir, format + '-'));
-  const context = createContext(format, { AUTH0_INPUT_FILE: dir });
-  const typeFolder = path.join(dir, format.subDir);
-  context.assets[spec.handlerType] = spec.export.json;
-  await format.handler.dump(context);
+async function caseValidateExport(format, testSpec) {
+  const spec = _.cloneDeep(testSpec);
+  const dir = fs.mkdtempSync(path.join(testDataDir, format.name + '-'));
+  const context = createContext(format, getInputConfig(format, dir, null));
+  const typeFolder = path.join(dir, spec.subDir);
+  context.assets[spec.handlerType] = _.cloneDeep(spec.export.json);
+  const dumped = await format.handler.dump(context);
 
+  if (spec.export.expected[format.name].json) {
+    expect(dumped).to.deep.equal({
+      [spec.handlerType]: spec.export.expected[format.name].json
+    });
+  }
   spec.export.expected[format.name].files.forEach((f) => {
     if (f.fileName === null) {
       expect(fs.pathExistsSync(typeFolder)).to.be.false;
@@ -191,15 +210,20 @@ async function caseValidateExport(format, spec) {
   rmdirSync(dir);
 }
 
-async function caseValidateExportUndefined(format, spec) {
-  var updatedSpec = _.cloneDeep(spec);
-  delete updatedSpec.export.json;
-  updatedSpec.export.expected[format.name].files = [ { fileName: null } ];
-  await caseValidateExport(format, updatedSpec);
+async function caseValidateExportUndefined(format, testSpec) {
+  var spec = _.cloneDeep(testSpec);
+  if (format.name === 'directory') {
+    delete spec.export.json;
+  } else {
+    spec.export.json = [];
+    spec.export.expected[format.name].json = [];
+  }
+  spec.export.expected[format.name].files = [ { fileName: null } ];
+  await caseValidateExport(format, spec);
 }
 
 export function getStandardTests(format) {
-  const tests = [
+  var tests = [
     {
       name: 'should process import',
       func: caseValidateImport
@@ -207,10 +231,6 @@ export function getStandardTests(format) {
     {
       name: 'should ignore unknown file',
       func: caseValidateImportIgnoreUnknown
-    },
-    {
-      name: 'should ignore non-directory input',
-      func: caseValidateImportIgnoreNonDirectoryInput
     },
     {
       name: 'should export with snaitized file name',
@@ -221,6 +241,12 @@ export function getStandardTests(format) {
       func: caseValidateExportUndefined
     }
   ];
+  if (format.name === 'directory') {
+    tests.push({
+      name: 'should ignore non-directory input',
+      func: caseValidateImportIgnoreNonDirectoryInput
+    });
+  }
   return tests.map(test => ({
     name: format.name + ' - ' + test.name,
     func: test.func

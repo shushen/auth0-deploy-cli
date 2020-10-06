@@ -5,23 +5,23 @@ import yamlHandler from '../../../src/context/yaml/handlers/clientGrants';
 import { getStandardTests } from '../../utils';
 
 const testSpec = {
+  handlerType: 'clientGrants',
+  subDir: constants.CLIENTS_GRANTS_DIRECTORY,
+  env: { AUTH0_KEYWORD_REPLACE_MAPPINGS: { var: 'something' } },
   formats: [
     {
       name: 'directory',
-      handler: dirHandler,
-      subDir: constants.CLIENTS_DIRECTORY
+      handler: dirHandler
     },
     {
       name: 'yaml',
       handler: yamlHandler
     }
   ],
-  handlerType: 'clientGrants',
-  handlerDir: constants.CLIENTS_GRANTS_DIRECTORY,
-  env: { AUTH0_KEYWORD_REPLACE_MAPPINGS: { var: 'something' } },
   import: {
-    files: {
-      'test.json': `
+    directory: {
+      files: {
+        'test.json': `
     {
       "client_id": "auth0-webhooks",
       "audience": "https://test.auth0.com/api/v2/",
@@ -30,6 +30,16 @@ const testSpec = {
       ],
       "var": @@var@@
     }`
+      }
+    },
+    yaml: {
+      content: `
+      clientGrants:
+        - client_id: "auth0-webhooks"
+          audience: "https://test.auth0.com/api/v2/"
+          scope:
+            - "read:logs"
+      `
     },
     expected: [
       {
@@ -48,26 +58,39 @@ const testSpec = {
         scope: [ 'update:account' ]
       }
     ],
-    expected: [
-      {
-        fileName: 'My M2M (https---test.myapp.com-api-v1).json',
-        contentType: 'json',
-        content: {
-          audience: 'https://test.myapp.com/api/v1',
-          client_id: 'My M2M',
-          scope: [ 'update:account' ]
-        }
+    expected: {
+      directory: {
+        files: [
+          {
+            fileName: 'My M2M (https---test.myapp.com-api-v1).json',
+            contentType: 'json',
+            content: {
+              audience: 'https://test.myapp.com/api/v1',
+              client_id: 'My M2M',
+              scope: [ 'update:account' ]
+            }
+          }
+        ]
+      },
+      yaml: {
+        json: [
+          {
+            audience: 'https://test.myapp.com/api/v1',
+            client_id: 'My M2M',
+            scope: [ 'update:account' ]
+          }
+        ]
       }
-    ]
+    }
   }
 };
 
 
-describe('#directory context clientGrants', () => {
+describe('#resource clientGrants', () => {
   testSpec.formats.forEach((format) => {
     getStandardTests(format).forEach((test) => {
       it(test.name, async () => {
-        await test.func(test.format, testSpec);
+        await test.func(format, testSpec);
       });
     });
   });
